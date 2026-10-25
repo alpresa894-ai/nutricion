@@ -6,9 +6,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Noe&Nando MRP" />
-  <title>CleverHome MRP & Nutrition v1.2 — Noelia & Nando</title>
+  <title>CleverHome MRP & Nutrition v1.3 Cloud — Noelia & Nando</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS for Excel (.xlsx) Export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Firebase Realtime Database SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <style>
     :root {
       --safe-bottom: env(safe-area-inset-bottom, 18px);
@@ -17,7 +22,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
       background-color: #f4f6f9;
       color: #1e293b;
-      padding-bottom: calc(105px + var(--safe-bottom));
+      padding-bottom: calc(108px + var(--safe-bottom));
       -webkit-tap-highlight-color: transparent;
     }
     .glass-header {
@@ -25,7 +30,7 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
-    /* Barra inferior elevada varios milímetros para mayor ergonomía en iPhone */
+    /* Barra inferior elevada varios milímetros para mayor comodidad en iPhone */
     .bottom-nav {
       background: rgba(255, 255, 255, 0.97);
       backdrop-filter: blur(16px);
@@ -44,7 +49,7 @@
 </head>
 <body class="antialiased selection:bg-emerald-100 selection:text-emerald-900">
 
-  <!-- CABECERA COMPACTA SUPERIOR -->
+  <!-- CABECERA COMPACTA SUPERIOR CON INDICADOR DE NUBE -->
   <header class="sticky top-0 z-30 glass-header border-b border-slate-200 px-3 py-2 shadow-sm no-print">
     <div class="max-w-2xl mx-auto space-y-1.5">
       <div class="flex items-center justify-between gap-2">
@@ -53,12 +58,17 @@
             CN
           </div>
           <div class="truncate">
-            <h1 class="text-xs font-bold leading-tight text-slate-900 truncate">CleverHome MRP</h1>
-            <p class="text-[10px] text-slate-500 truncate" id="headerSubtitle">Vista Conjunta · Alerta Fructosa ⚠️</p>
+            <div class="flex items-center gap-1.5">
+              <h1 class="text-xs font-bold leading-tight text-slate-900 truncate">CleverHome MRP</h1>
+              <span id="cloudStatusBadge" onclick="forceCloudSync()" class="cursor-pointer text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                🔄 Conectando...
+              </span>
+            </div>
+            <p class="text-[10px] text-slate-500 truncate" id="headerSubtitle">Sincronizado en tiempo real</p>
           </div>
         </div>
 
-        <!-- Selector de Perfil -->
+        <!-- Selector de Perfil Independiente por Dispositivo -->
         <div class="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200 text-[11px] font-semibold flex-shrink-0">
           <button onclick="setProfile('conjunta')" id="prof-conjunta" class="px-2 py-1 rounded-lg transition-all bg-emerald-600 text-white shadow-sm">
             👩‍❤️‍👨 Conjunta
@@ -85,7 +95,6 @@
     <section id="tab-semana" class="tab-view space-y-3">
       <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200 space-y-2.5">
         <div class="flex items-center justify-between gap-2">
-          <!-- Selector Semana Actual vs Siguiente -->
           <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-[11px] font-semibold">
             <button onclick="setActiveWeekHorizon('actual')" id="wk-actual" class="px-2.5 py-1.5 rounded-lg bg-slate-900 text-white shadow-sm">
               Semana Actual
@@ -95,7 +104,6 @@
             </button>
           </div>
 
-          <!-- Conmutador Vista Día vs Vista Lunes-Domingo -->
           <div class="inline-flex rounded-xl bg-emerald-50 p-0.5 border border-emerald-200 text-[11px] font-bold">
             <button onclick="setWeekViewMode('dia')" id="wvm-dia" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white shadow-sm">
               📅 Día
@@ -106,7 +114,6 @@
           </div>
         </div>
 
-        <!-- Selector de Plantilla Base o Personalizada -->
         <div class="flex items-center justify-between gap-2 pt-0.5">
           <span class="text-[11px] font-semibold text-slate-500 flex-shrink-0">Base Semanal:</span>
           <select id="templateSelect" onchange="loadWeekTemplate(this.value)" class="flex-1 text-xs font-semibold bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none">
@@ -121,14 +128,11 @@
 
       <!-- MODO A: VISTA DÍA A DÍA -->
       <div id="weekDayViewContainer" class="space-y-2.5">
-        <!-- Píldoras de Días (Sin subtítulos "Tupper Nando" ni "Casa") -->
         <div class="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5" id="dayPillsContainer"></div>
-
-        <!-- Tarjetas Limpias de Comidas del Día -->
         <div id="dailyMealsContainer" class="space-y-2.5"></div>
       </div>
 
-      <!-- MODO B: VISTA SIMPLIFICADA LUNES A DOMINGO (7 DÍAS DE UN VISTAZO) -->
+      <!-- MODO B: VISTA SIMPLIFICADA LUNES A DOMINGO (7 DÍAS) -->
       <div id="weekGridViewContainer" class="hidden space-y-2.5"></div>
     </section>
 
@@ -138,10 +142,10 @@
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-sm font-bold text-slate-900">📸 Registro Visual de Comidas</h2>
-            <p class="text-[11px] text-slate-500">Registra Kcal reales en Salud y descuenta 100% del stock</p>
+            <p class="text-[11px] text-slate-500">Sincroniza con ambos iPhones, suma a Salud y descuenta stock</p>
           </div>
           <span class="text-[10px] font-bold px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-            Auto-MRP
+            Auto-MRP Cloud
           </span>
         </div>
 
@@ -197,13 +201,13 @@
         </div>
 
         <button onclick="saveMealLog()" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition">
-          ✅ Registrar Plato, Sumar a Salud y Descontar Stock
+          ✅ Registrar Plato, Sincronizar Nube y Descontar Stock
         </button>
       </div>
 
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2.5">
         <div class="flex items-center justify-between">
-          <h3 class="text-xs font-bold text-slate-900">📊 Histórico para el Nutricionista</h3>
+          <h3 class="text-xs font-bold text-slate-900">📊 Histórico Compartido para el Nutricionista</h3>
           <span id="logCountBadge" class="text-[11px] text-slate-500 font-semibold">0 registros</span>
         </div>
         <div id="mealLogsFeed" class="space-y-2"></div>
@@ -212,7 +216,6 @@
 
     <!-- ==================== PESTAÑA 3: CREAR PLATO (+ ASIGNACIÓN DIRECTA A DÍA + EQUIPOS) ==================== -->
     <section id="tab-crear" class="tab-view hidden space-y-3.5">
-      <!-- Banner de Asignación Rápida si viene desde la pestaña Semana -->
       <div id="assignTargetBanner" class="hidden bg-emerald-900 text-white rounded-2xl p-3 flex items-center justify-between text-xs shadow-md">
         <div>
           <span class="text-[10px] uppercase font-bold text-emerald-300 block">Diseñando plato a medida para:</span>
@@ -246,7 +249,6 @@
 
         <div id="builderSelectorsContainer" class="space-y-2.5 pt-0.5"></div>
 
-        <!-- Panel para Guardar y Asignar el Plato Creado a un Día -->
         <div id="builderAssignBox" class="bg-slate-900 text-white rounded-2xl p-3 space-y-2">
           <div class="text-[11px] font-bold text-emerald-300">📅 Guardar combinación y asignar a la Semana:</div>
           <div class="grid grid-cols-3 gap-1.5 text-xs">
@@ -272,7 +274,6 @@
         <div id="generatedRecipesContainer" class="space-y-2 pt-1"></div>
       </div>
 
-      <!-- Catálogo Oficial Desayunos y Snacks -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2.5">
         <h3 class="text-xs font-bold text-slate-900">☕ Catálogo de Desayunos (300 kcal) y Snacks</h3>
         <div class="flex gap-1 bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
@@ -286,7 +287,6 @@
 
     <!-- ==================== PESTAÑA 4: STOCK / COMPRA (+ PORCIONADOR BANDEJAS + PRECIOS €) ==================== -->
     <section id="tab-necesidades" class="tab-view hidden space-y-3.5">
-      <!-- Porcionador Inteligente de Bandejas Irregulares (Congelador) -->
       <div class="bg-indigo-950 text-white rounded-2xl p-3.5 shadow-md space-y-2.5">
         <div class="flex items-center justify-between">
           <div>
@@ -326,12 +326,11 @@
         </div>
       </div>
 
-      <!-- Gestión de Stock Editable al Gramo y Lista de Compra con Coste -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 class="text-sm font-bold text-slate-900">📦 Stock en Casa vs. Lista de Compra</h2>
-            <p class="text-[11px] text-slate-500">Toca cualquier cantidad en gramos para escribir el peso exacto</p>
+            <p class="text-[11px] text-slate-500">Toca cualquier cantidad en gramos para editarla en tiempo real</p>
           </div>
           <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-[11px] font-bold">
             <button onclick="setShoppingHorizon('semanal')" id="shop-semanal" class="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm">
@@ -343,7 +342,6 @@
           </div>
         </div>
 
-        <!-- Resumen Financiero de Compra y Stock -->
         <div id="mrpCostSummaryBar" class="grid grid-cols-3 gap-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200 text-center text-[11px]"></div>
 
         <div class="grid grid-cols-2 gap-2">
@@ -351,13 +349,13 @@
             ✅ Pasar Marcados a Casa
           </button>
           <button onclick="toggleTicketScanner()" class="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition">
-            🧾 Meter Ticket / Precios
+            🧾 Meter Ticket / Gramos
           </button>
         </div>
 
         <div id="ticketScannerBox" class="hidden bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-800">🧾 Entrada Rápida de Compra (Gramos)</span>
+            <span class="text-xs font-bold text-slate-800">🧾 Entrada Rápida de Compra</span>
             <button onclick="toggleTicketScanner()" class="text-[11px] text-slate-500">Cerrar ✕</button>
           </div>
           <div class="flex gap-2">
@@ -376,9 +374,8 @@
       </div>
     </section>
 
-    <!-- ==================== PESTAÑA 5: SALUD (ANILLOS APPLE + PESO + ANTROPOMETRÍA BILATERAL) ==================== -->
+    <!-- ==================== PESTAÑA 5: SALUD (ANILLOS + PESO + ANTROPOMETRÍA BILATERAL) ==================== -->
     <section id="tab-salud" class="tab-view hidden space-y-3.5">
-      <!-- Anillos de Cumplimiento Nutricional (Estilo Apple Health) -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-3">
         <div class="flex items-center justify-between">
           <div>
@@ -393,7 +390,6 @@
         <div id="healthRingsContainer" class="grid grid-cols-4 gap-2 text-center pt-1"></div>
       </div>
 
-      <!-- Registro de Peso y Tendencia (Media Móvil 7 Registros) -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-3">
         <h3 class="text-xs font-bold text-slate-900">⚖️ Evolución de Peso y Media Móvil (Sin Ruido de Líquidos)</h3>
         <div class="grid grid-cols-3 gap-2 text-xs">
@@ -407,11 +403,10 @@
         <div id="weightHistoryBox" class="space-y-1.5 text-xs"></div>
       </div>
 
-      <!-- Registro de Medidas Corporales y Comparativa Bilateral de Piernas -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-3">
         <div>
           <h3 class="text-xs font-bold text-slate-900">📏 Antropometría, % Grasa y Evolución Bilateral</h3>
-          <p class="text-[11px] text-slate-500">Incluye comparativa Muslo/Gemelo Derecho vs. Izquierdo para control de rehabilitación</p>
+          <p class="text-[11px] text-slate-500">Comparativa Muslo Derecho vs. Izquierdo para control de rehabilitación</p>
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
@@ -448,7 +443,6 @@
 
     <!-- ==================== PESTAÑA 6: CONFIG / RUTA DE COCINA / EXCEL ==================== -->
     <section id="tab-config" class="tab-view hidden space-y-3.5">
-      <!-- HOJA DE RUTA DE COCINA DINÁMICA Y ADAPTAR A HOY (Reubicados aquí) -->
       <div class="bg-indigo-950 text-white rounded-2xl p-4 shadow-md space-y-3">
         <div class="flex items-center justify-between">
           <div>
@@ -472,7 +466,6 @@
         <div id="batchRoadmapContent" class="space-y-2 text-xs leading-relaxed"></div>
       </div>
 
-      <!-- Exportación de Dashboards Excel (5 Hojas) y PDF -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2.5">
         <h3 class="text-xs font-bold text-slate-900">📊 Exportar Dashboards (Excel 5 Hojas y PDF)</h3>
         <p class="text-[11px] text-slate-500">Incluye KPIs, Plan Semanal, Histórico Nutricionista, MRP + Precios (€) y Evolución de Salud.</p>
@@ -486,11 +479,10 @@
         </div>
       </div>
 
-      <!-- Configuración de Multiplicadores de Nando -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2.5">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-xs font-bold text-slate-900">👨 Parámetros de Nando (Hasta cita 17/11/26)</h3>
+            <h3 class="text-xs font-bold text-slate-900">👨 Parámetros de Nando (Sincronizados en Nube)</h3>
             <p class="text-[10px] text-slate-500">Ajusta tus multiplicadores o activa el recorte de hidratos</p>
           </div>
           <label class="inline-flex items-center cursor-pointer">
@@ -515,7 +507,6 @@
         </div>
       </div>
 
-      <!-- Tarjetas Limpias de Conservación en Nevera y Congelador + Acceso Equipos -->
       <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2.5">
         <div class="flex items-center justify-between">
           <h3 class="text-xs font-bold text-slate-900">❄️ Guía de Conservación Segura (Nevera 4°C y Congelador)</h3>
@@ -545,20 +536,20 @@
         </div>
       </div>
 
-      <!-- Copia de Seguridad & Asistente IA -->
       <div class="bg-slate-900 text-white rounded-2xl p-3.5 shadow-md space-y-2.5">
         <div class="flex items-center justify-between">
-          <h3 class="text-xs font-bold">🤖 Asistente IA & Copia de Seguridad</h3>
+          <h3 class="text-xs font-bold">☁️ Estado Firebase & Copia de Seguridad</h3>
           <div class="flex gap-1.5">
+            <button onclick="forceCloudSync()" class="text-[10px] bg-emerald-700 px-2.5 py-1 rounded-lg">🔄 Sincronizar</button>
             <button onclick="exportBackupJSON()" class="text-[10px] bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">💾 Backup</button>
             <button onclick="importBackupPrompt()" class="text-[10px] bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">📂 Restaurar</button>
           </div>
         </div>
-        <div id="aiChatHistory" class="bg-slate-950 rounded-xl p-2.5 h-32 overflow-y-auto space-y-1.5 text-[11px] border border-slate-800">
-          <div class="text-slate-300">👋 Escribe comandos directos como <i>"compre 643g pollo"</i> o dudas de conservación.</div>
+        <div id="aiChatHistory" class="bg-slate-950 rounded-xl p-2.5 h-28 overflow-y-auto space-y-1.5 text-[11px] border border-slate-800">
+          <div class="text-slate-300">☁️ Conectado a <b>nutricion-8aeb1 (europe-west1)</b>. Cualquier cambio o comando aquí se replica en todos vuestros iPhones.</div>
         </div>
         <div class="flex gap-1.5">
-          <input type="text" id="aiChatInput" placeholder="Escribe comando o consulta..." onkeydown="if(event.key==='Enter') sendAiCommand()" class="flex-1 text-xs bg-slate-800 text-white border border-slate-700 rounded-xl px-3 py-2 focus:outline-none" />
+          <input type="text" id="aiChatInput" placeholder="Ej: compre 643g pollo..." onkeydown="if(event.key==='Enter') sendAiCommand()" class="flex-1 text-xs bg-slate-800 text-white border border-slate-700 rounded-xl px-3 py-2 focus:outline-none" />
           <button onclick="sendAiCommand()" class="px-3.5 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold">Enviar</button>
         </div>
       </div>
@@ -566,7 +557,7 @@
 
   </main>
 
-  <!-- ==================== MODAL 1: DETALLE COMPLETO DE RECETA ==================== -->
+  <!-- ==================== MODALES ==================== -->
   <div id="recipeModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 no-print">
     <div class="bg-white w-full max-w-xl rounded-t-3xl sm:rounded-3xl max-h-[88vh] overflow-y-auto p-5 space-y-3.5 shadow-2xl">
       <div class="flex items-start justify-between gap-3 border-b border-slate-100 pb-2.5">
@@ -576,20 +567,16 @@
         </div>
         <button onclick="closeRecipeModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center">✕</button>
       </div>
-
       <div id="modalWeightsBox" class="bg-slate-50 rounded-2xl p-3 border border-slate-200 space-y-1.5"></div>
       <div id="modalFructoseBox" class="hidden bg-amber-50 rounded-2xl p-3 border border-amber-300 space-y-1"></div>
-
       <div class="space-y-1.5">
         <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500">⚙️ Ejecución en tus Equipos</h4>
         <div id="modalStepsBox" class="space-y-2 text-xs text-slate-700 leading-relaxed"></div>
       </div>
-
       <div id="modalConservationBox" class="bg-indigo-50/70 rounded-2xl p-3 border border-indigo-200 text-xs space-y-1"></div>
     </div>
   </div>
 
-  <!-- ==================== MODAL 2: ALERTA DE FRUCTOSA ==================== -->
   <div id="fructosePopup" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="bg-white w-full max-w-md rounded-3xl p-5 space-y-3 shadow-2xl border border-amber-300">
       <div class="flex items-center justify-between">
@@ -605,7 +592,6 @@
     </div>
   </div>
 
-  <!-- ==================== MODAL 3: ADAPTAR A HOY ==================== -->
   <div id="adaptTodayModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="bg-white w-full max-w-lg rounded-3xl p-5 space-y-3 shadow-2xl">
       <div class="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -634,7 +620,6 @@
     </div>
   </div>
 
-  <!-- ==================== MODAL 4: PARQUE DE EQUIPOS DE COCINA ==================== -->
   <div id="appliancesModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 no-print">
     <div class="bg-white w-full max-w-xl rounded-t-3xl sm:rounded-3xl max-h-[85vh] overflow-y-auto p-5 space-y-3 shadow-2xl">
       <div class="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -645,7 +630,7 @@
     </div>
   </div>
 
-  <!-- BARRA DE NAVEGACIÓN INFERIOR ELEVADA (6 PESTAÑAS) -->
+  <!-- BARRA DE NAVEGACIÓN INFERIOR ELEVADA -->
   <nav class="fixed bottom-0 left-0 right-0 z-40 bottom-nav border-t border-slate-200 px-2 no-print">
     <div class="max-w-2xl mx-auto grid grid-cols-6 gap-1">
       <button onclick="switchTab('semana')" id="nav-semana" class="nav-btn flex flex-col items-center py-1 rounded-xl text-emerald-600 font-bold">
@@ -676,6 +661,11 @@
   </nav>
 
   <script>
+    // ==================== CONFIGURACIÓN FIREBASE REALTIME DATABASE ====================
+    const FIREBASE_DB_URL = "https://nutricion-8aeb1-default-rtdb.europe-west1.firebasedatabase.app";
+    let firebaseRef = null;
+    let isApplyingRemoteUpdate = false;
+
     // ==================== 1. ALERTAS CLÍNICAS DE FRUCTOSA ====================
     const FRUCTOSE_ALERTS = {
       cebolla: {
@@ -1057,7 +1047,7 @@
       { name: "Microondas LG MH6535GDS", tag: "Smart Inverter + Vaporera", specs: "Potencia progresiva sin secar alimentos.", tips: "Regenerar platos de Noelia a las 14:45h siempre a 700W durante 1 min 50 seg con tapa." }
     ];
 
-    // ==================== 4. ESTADO PERSISTENTE Y MIGRACIÓN SEGURA ====================
+    // ==================== 4. ESTADO LOCAL + SINCRONIZACIÓN EN TIEMPO REAL FIREBASE ====================
     const DEFAULT_INVENTORY = [
       { key: "pollo", name: "Pechuga de pollo", cat: "Carnes", stock: 643, minStock: 420, unit: "g", pricePerKg: 7.45, boughtChecked: false },
       { key: "pavo", name: "Solomillo / Pechuga de pavo", cat: "Carnes", stock: 420, minStock: 420, unit: "g", pricePerKg: 8.20, boughtChecked: false },
@@ -1092,7 +1082,7 @@
     const DEFAULT_STATE = {
       profile: "conjunta",
       weekHorizon: "actual",
-      weekViewMode: "dia", // 'dia' | '7dias'
+      weekViewMode: "dia",
       selectedDayIdx: 0,
       nando: { defMode: false, multProt: 1.10, multCarb: 1.42, multFat: 1.30 },
       customDishes: {},
@@ -1121,7 +1111,7 @@
     let shoppingHorizon = "semanal";
     let mrpFilter = "all";
     let builderMode = "3col";
-    let pendingAssignSlot = null; // { dayIdx, slotKey }
+    let pendingAssignSlot = null;
 
     function loadState() {
       try {
@@ -1131,7 +1121,6 @@
           const merged = Object.assign({}, DEFAULT_STATE, parsed);
           if (!merged.health) merged.health = JSON.parse(JSON.stringify(DEFAULT_STATE.health));
           if (!merged.customDishes) merged.customDishes = {};
-          // Ensure pricePerKg exists on inventory items
           merged.inventory.forEach(it => {
             const def = DEFAULT_INVENTORY.find(d => d.key === it.key);
             if (it.pricePerKg === undefined && def) it.pricePerKg = def.pricePerKg;
@@ -1142,10 +1131,119 @@
       return JSON.parse(JSON.stringify(DEFAULT_STATE));
     }
 
-    function saveState() {
+    function setCloudBadge(status) {
+      const badge = document.getElementById("cloudStatusBadge");
+      if (!badge) return;
+      if (status === "ok") {
+        badge.className = "cursor-pointer text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
+        badge.textContent = "🟢 Nube OK";
+      } else if (status === "syncing") {
+        badge.className = "cursor-pointer text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200";
+        badge.textContent = "🔄 Sincronizando...";
+      } else {
+        badge.className = "cursor-pointer text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+        badge.textContent = "⚪ Local";
+      }
+    }
+
+    // Guarda localmente y empuja los datos compartidos a Firebase Realtime Database
+    function saveState(skipCloud = false) {
       try {
         localStorage.setItem("cleverHomeMrpState_v1", JSON.stringify(state));
       } catch (e) { console.error(e); }
+
+      if (!skipCloud && !isApplyingRemoteUpdate && firebaseRef) {
+        setCloudBadge("syncing");
+        const sharedPayload = {
+          updatedAt: Date.now(),
+          nando: state.nando,
+          customDishes: state.customDishes || {},
+          weeks: state.weeks,
+          inventory: state.inventory,
+          logs: state.logs || [],
+          health: state.health
+        };
+        firebaseRef.set(sharedPayload)
+          .then(() => setCloudBadge("ok"))
+          .catch(err => {
+            console.error("Error Firebase:", err);
+            setCloudBadge("offline");
+          });
+      }
+    }
+
+    function initFirebaseSync() {
+      try {
+        if (typeof firebase === "undefined") {
+          setCloudBadge("offline");
+          return;
+        }
+        if (!firebase.apps.length) {
+          firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
+        }
+        const db = firebase.database();
+        firebaseRef = db.ref("cleverhome_shared_v1");
+
+        // Escucha en vivo cualquier cambio hecho desde el otro iPhone o el ordenador
+        firebaseRef.on("value", (snapshot) => {
+          const cloudData = snapshot.val();
+          if (!cloudData) {
+            // Si la base de datos en Firebase está en null (recién creada), subimos el estado actual
+            saveState(false);
+            return;
+          }
+          isApplyingRemoteUpdate = true;
+          if (cloudData.nando) state.nando = cloudData.nando;
+          if (cloudData.customDishes) {
+            state.customDishes = cloudData.customDishes;
+            DISHES_DB = Object.assign({}, INITIAL_DISHES_DB, state.customDishes);
+          } else {
+            state.customDishes = {};
+            DISHES_DB = Object.assign({}, INITIAL_DISHES_DB);
+          }
+          if (cloudData.weeks) state.weeks = cloudData.weeks;
+          if (cloudData.inventory) state.inventory = cloudData.inventory;
+          state.logs = cloudData.logs || [];
+          if (cloudData.health) {
+            state.health = {
+              weights: cloudData.health.weights || [],
+              measurements: cloudData.health.measurements || []
+            };
+          }
+
+          saveState(true);
+          refreshAllViewsFromState();
+          setCloudBadge("ok");
+          isApplyingRemoteUpdate = false;
+        }, (err) => {
+          console.error("Error lectura Firebase:", err);
+          setCloudBadge("offline");
+        });
+      } catch (e) {
+        console.error("Fallo al iniciar Firebase:", e);
+        setCloudBadge("offline");
+      }
+    }
+
+    function forceCloudSync() {
+      saveState(false);
+    }
+
+    function refreshAllViewsFromState() {
+      document.getElementById("nandoDefToggle").checked = state.nando.defMode;
+      document.getElementById("multProtInput").value = state.nando.multProt;
+      document.getElementById("multCarbInput").value = state.nando.multCarb;
+      document.getElementById("multFatInput").value = state.nando.multFat;
+
+      renderMacroSummaryBar();
+      renderWeekContent();
+      populateLogDishOptions();
+      renderMealLogsFeed();
+      renderBuilderSelectors();
+      calculatePortionSplit();
+      renderMrpList();
+      renderHealthDashboard();
+      renderDynamicBatchRoadmap("2sesiones");
     }
 
     // ==================== 5. PERFILES Y CÁLCULO DE PESOS ====================
@@ -1163,7 +1261,7 @@
 
     function setProfile(prof) {
       state.profile = prof;
-      saveState();
+      saveState(true); // Preferencia visual local de cada iPhone
       ["conjunta", "noelia", "nando"].forEach(p => {
         document.getElementById("prof-" + p).className = p === prof
           ? "px-2 py-1 rounded-lg transition-all bg-emerald-600 text-white shadow-sm"
@@ -1210,10 +1308,10 @@
       }
     }
 
-    // ==================== 6. PESTAÑA 1: SEMANA (LIMPIA + VISTA DÍA / 7 DÍAS + DESPLEGABLE DIRECTO) ====================
+    // ==================== 6. PESTAÑA 1: SEMANA ====================
     function setActiveWeekHorizon(h) {
       state.weekHorizon = h;
-      saveState();
+      saveState(true);
       document.getElementById("wk-actual").className = h === "actual"
         ? "px-2.5 py-1.5 rounded-lg bg-slate-900 text-white shadow-sm"
         : "px-2.5 py-1.5 rounded-lg text-slate-600";
@@ -1227,7 +1325,7 @@
 
     function setWeekViewMode(mode) {
       state.weekViewMode = mode;
-      saveState();
+      saveState(true);
       document.getElementById("wvm-dia").className = mode === "dia"
         ? "px-2.5 py-1 rounded-lg bg-emerald-600 text-white shadow-sm"
         : "px-2.5 py-1 rounded-lg text-emerald-800";
@@ -1241,7 +1339,7 @@
       if (tplId === "custom") return;
       state.weeks[state.weekHorizon] = JSON.parse(JSON.stringify(WEEK_TEMPLATES[tplId]));
       document.getElementById("templateSelect").value = "custom";
-      saveState();
+      saveState(false);
       renderWeekContent();
       renderMrpList();
       renderDynamicBatchRoadmap("2sesiones");
@@ -1262,7 +1360,6 @@
       }
     }
 
-    // Píldoras de Días limpias (sin etiquetas "Tupper Nando" ni "Casa")
     function renderDayPills() {
       const container = document.getElementById("dayPillsContainer");
       const weekArr = state.weeks[state.weekHorizon];
@@ -1283,7 +1380,7 @@
 
     function selectDay(idx) {
       state.selectedDayIdx = idx;
-      saveState();
+      saveState(true);
       renderDayPills();
       renderDailyMeals();
     }
@@ -1307,7 +1404,7 @@
       }
       state.weeks[state.weekHorizon][dayIdx][slotKey] = value;
       document.getElementById("templateSelect").value = "custom";
-      saveState();
+      saveState(false);
       renderWeekContent();
       renderMrpList();
       renderDynamicBatchRoadmap("2sesiones");
@@ -1329,7 +1426,6 @@
       document.getElementById("assignTargetBanner").classList.add("hidden");
     }
 
-    // Tarjetas principales simplificadas (Solo descripción del plato + desplegable + botón Ver Receta)
     function renderDailyMeals() {
       const container = document.getElementById("dailyMealsContainer");
       const dayObj = state.weeks[state.weekHorizon][state.selectedDayIdx];
@@ -1342,7 +1438,7 @@
       const showFruct = shouldShowFructoseAlert();
 
       container.innerHTML = `
-        <!-- DESAYUNO (300 KCAL) -->
+        <!-- DESAYUNO -->
         <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-1.5">
           <div class="flex items-center justify-between gap-2">
             <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
@@ -1358,7 +1454,7 @@
           </div>
         </div>
 
-        <!-- ALMUERZO (511 KCAL) - SOLO DESCRIPCIÓN EN PANTALLA PRINCIPAL + SELECTOR DIRECTO -->
+        <!-- ALMUERZO -->
         <div class="bg-white rounded-2xl p-3.5 shadow-sm border-l-4 border-l-emerald-600 border border-slate-200 space-y-2">
           <div class="flex items-center justify-between gap-2">
             <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800">
@@ -1386,7 +1482,7 @@
           </div>
         </div>
 
-        <!-- SNACKS (COMODÍN 80 KCAL + MEDIA TARDE 200 KCAL) -->
+        <!-- SNACKS -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200 space-y-1">
             <div class="flex items-center justify-between">
@@ -1412,7 +1508,7 @@
           </div>
         </div>
 
-        <!-- CENA (511 KCAL) - SOLO DESCRIPCIÓN EN PANTALLA PRINCIPAL + SELECTOR DIRECTO -->
+        <!-- CENA -->
         <div class="bg-white rounded-2xl p-3.5 shadow-sm border-l-4 border-l-indigo-600 border border-slate-200 space-y-2">
           <div class="flex items-center justify-between gap-2">
             <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800">
@@ -1442,7 +1538,6 @@
       `;
     }
 
-    // Vista Simplificada Lunes a Domingo (7 Días de un vistazo con edición directa)
     function renderSevenDaysOverview() {
       const container = document.getElementById("weekGridViewContainer");
       const weekArr = state.weeks[state.weekHorizon];
@@ -1485,7 +1580,7 @@
 
     function changeDaySimpleSlot(slot, newId) {
       state.weeks[state.weekHorizon][state.selectedDayIdx][slot] = newId;
-      saveState();
+      saveState(false);
       renderDailyMeals();
     }
 
@@ -1557,7 +1652,7 @@
       document.getElementById("fructosePopup").classList.add("hidden");
     }
 
-    // ==================== 8. PESTAÑA 2: REGISTRO VISUAL ====================
+    // ==================== 8. PESTAÑA 2: REGISTRO VISUAL (CON COMPRESIÓN DE FOTOS PARA NUBE) ====================
     function populateLogDishOptions() {
       const mealType = document.getElementById("logMealType").value;
       const sel = document.getElementById("logDishSelect");
@@ -1589,14 +1684,26 @@
       });
     }
 
+    // Comprime la foto automáticamente a 420px JPEG para sincronizar al instante entre iPhones
     function previewLogPhoto(input) {
       if (input.files && input.files[0]) {
         const reader = new FileReader();
         reader.onload = function(e) {
-          currentPhotoDataUrl = e.target.result;
-          document.getElementById("photoPreviewImg").src = currentPhotoDataUrl;
-          document.getElementById("photoPreviewContainer").classList.remove("hidden");
-          document.getElementById("photoLabelText").textContent = "✅ Foto lista";
+          const img = new Image();
+          img.onload = function() {
+            const canvas = document.createElement("canvas");
+            const maxW = 420;
+            const scale = img.width > maxW ? maxW / img.width : 1;
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            currentPhotoDataUrl = canvas.toDataURL("image/jpeg", 0.65);
+            document.getElementById("photoPreviewImg").src = currentPhotoDataUrl;
+            document.getElementById("photoPreviewContainer").classList.remove("hidden");
+            document.getElementById("photoLabelText").textContent = "✅ Foto optimizada lista";
+          };
+          img.src = e.target.result;
         };
         reader.readAsDataURL(input.files[0]);
       }
@@ -1649,11 +1756,11 @@
         hc: Math.round(baseHC * ratio),
         g: Math.round(baseG * ratio),
         notes: notes || "Digestión bien tolerada.",
-        photo: currentPhotoDataUrl
+        photo: currentPhotoDataUrl || ""
       };
 
       state.logs.unshift(entry);
-      saveState();
+      saveState(false);
 
       currentPhotoDataUrl = null;
       document.getElementById("photoPreviewContainer").classList.add("hidden");
@@ -1664,7 +1771,7 @@
       renderMealLogsFeed();
       renderMrpList();
       renderHealthDashboard();
-      alert("✅ Plato registrado, macros sumados en Salud y stock descontado.");
+      alert("✅ Plato registrado y sincronizado en la nube con ambos iPhones.");
     }
 
     function renderMealLogsFeed() {
@@ -1690,7 +1797,7 @@
       `).join("");
     }
 
-    // ==================== 9. PESTAÑA 3: CREAR PLATO Y ASIGNAR DIRECTAMENTE ====================
+    // ==================== 9. PESTAÑA 3: CREAR PLATO ====================
     const BUILDER_INGREDIENTS = {
       protMagra: [
         { key: "pollo", name: "Pechuga de pollo", g: 200, type: "carne", fruct: null },
@@ -1789,8 +1896,6 @@
       const protList = builderMode === "3col" ? BUILDER_INGREDIENTS.protMagra : BUILDER_INGREDIENTS.protGrasa;
       const p = protList[parseInt(document.getElementById("bldProt")?.value || "0", 10)];
       const c = BUILDER_INGREDIENTS.hidratos[parseInt(document.getElementById("bldCarb")?.value || "0", 10)];
-      const f = builderMode === "3col" ? BUILDER_INGREDIENTS.grasas[parseInt(document.getElementById("bldFat")?.value || "0", 10)] : { key: "aove", name: "Grasa propia", g: 0, unit: "g", fruct: null };
-
       const pNan = Math.round(p.g * state.nando.multProt);
       const cNan = Math.round(c.g * (state.nando.defMode ? 1 : state.nando.multCarb));
 
@@ -1846,7 +1951,7 @@
       state.weeks[state.weekHorizon][dayIdx][slotKey] = customId;
       state.selectedDayIdx = dayIdx;
       document.getElementById("templateSelect").value = "custom";
-      saveState();
+      saveState(false);
 
       clearAssignTarget();
       renderWeekContent();
@@ -1874,7 +1979,7 @@
       `).join("");
     }
 
-    // ==================== 10. PESTAÑA 4: STOCK EDITABLE AL GRAMO + PORCIONADOR BANDEJAS + PRECIOS ====================
+    // ==================== 10. PESTAÑA 4: STOCK + PORCIONADOR + PRECIOS ====================
     function togglePortionerBox() {
       document.getElementById("portionerBox").classList.toggle("hidden");
     }
@@ -1893,18 +1998,17 @@
         return;
       }
 
-      // Buscar combinación óptima de bolsas (Conjuntas, Solo Nando, Solo Noelia)
       let bestDesc = "";
       if (trayG >= gJoint) {
         const numJoint = Math.floor(trayG / gJoint);
         const rem = trayG - (numJoint * gJoint);
         let remAdvice = "";
         if (Math.abs(rem - gNan) <= 25) {
-          remAdvice = ` + <b>1 bolsa individual Nando de ${rem}g</b> (objetivo ${gNan}g, cuadre directo)`;
+          remAdvice = ` + <b>1 bolsa individual Nando de ${rem}g</b> (objetivo ${gNan}g)`;
         } else if (Math.abs(rem - gNoe) <= 25) {
-          remAdvice = ` + <b>1 bolsa individual Noelia de ${rem}g</b> (objetivo ${gNoe}g, cuadre directo)`;
+          remAdvice = ` + <b>1 bolsa individual Noelia de ${rem}g</b> (objetivo ${gNoe}g)`;
         } else if (rem > 0) {
-          remAdvice = ` + <b>${rem}g sobrantes</b> (reservar en bolsa pequeña para completar la siguiente bandeja o fajitas)`;
+          remAdvice = ` + <b>${rem}g sobrantes</b> (reservar para fajitas o sumar a otra bandeja)`;
         } else {
           remAdvice = ` (0g sobrantes, exacto)`;
         }
@@ -1922,9 +2026,9 @@
       const item = state.inventory.find(x => x.key === key);
       if (item) {
         item.stock += trayG;
-        saveState();
+        saveState(false);
         renderMrpList();
-        alert(`❄️ Se han sumado exactamente ${trayG}g de ${item.name} a tu Stock en Casa.`);
+        alert(`❄️ Se han sumado ${trayG}g de ${item.name} al Stock compartido.`);
       }
     }
 
@@ -1983,7 +2087,7 @@
       const val = parseInt(valStr, 10);
       if (isNaN(val) || val < 0) return;
       state.inventory[idx].stock = val;
-      saveState();
+      saveState(false);
       renderMrpList();
     }
 
@@ -2008,7 +2112,6 @@
         if (mrpFilter === "buy" && toBuy <= 0) return "";
         if (mrpFilter === "stock" && item.stock <= 0) return "";
 
-        // Si es carne/pescado, mostrar cuántas raciones conjuntas hay en casa
         let bagsInfo = "";
         if (item.cat === "Carnes" || item.cat === "Pescados") {
           const jointG = 200 + Math.round(200 * state.nando.multProt);
@@ -2032,7 +2135,6 @@
             </div>
 
             <div class="grid grid-cols-2 gap-2 sm:w-64 text-center">
-              <!-- Input directo al gramo -->
               <div class="bg-white rounded-xl p-1.5 border border-slate-200">
                 <span class="text-[10px] text-slate-400 block font-semibold">🏡 En Casa (${item.unit})</span>
                 <input type="number" value="${item.stock}" onchange="setExactStock(${idx}, this.value)" class="w-full text-center text-xs font-bold text-emerald-700 bg-transparent focus:outline-none border-b border-dashed border-emerald-300" />
@@ -2059,7 +2161,7 @@
 
     function toggleItemBought(idx, checked) {
       state.inventory[idx].boughtChecked = checked;
-      saveState();
+      saveState(false);
     }
 
     function transferAllBoughtToInventory() {
@@ -2078,7 +2180,7 @@
         alert("Marca primero las casillas de los productos comprados.");
         return;
       }
-      saveState();
+      saveState(false);
       renderMrpList();
     }
 
@@ -2099,13 +2201,13 @@
           matched++;
         }
       });
-      saveState();
+      saveState(false);
       renderMrpList();
       document.getElementById("quickTicketText").value = "";
-      alert(`✅ ${matched} productos sumados con su gramaje exacto al inventario.`);
+      alert(`✅ ${matched} productos sumados y sincronizados en la nube.`);
     }
 
-    // ==================== 11. PESTAÑA 5: SALUD (ANILLOS + PESO + MEDIDAS BILATERALES) ====================
+    // ==================== 11. PESTAÑA 5: SALUD ====================
     function renderHealthDashboard() {
       const targetUser = state.profile === "nando" ? "Nando" : "Noelia";
       document.getElementById("healthActiveProfileBadge").textContent = targetUser;
@@ -2144,9 +2246,8 @@
         `;
       }).join("");
 
-      // Historial de Peso y Media Móvil
       const wUser = document.getElementById("weightUserSelect")?.value || "Noelia";
-      const userWeights = state.health.weights.filter(w => w.user === wUser);
+      const userWeights = (state.health.weights || []).filter(w => w.user === wUser);
       const avgWeight = userWeights.length > 0
         ? (userWeights.slice(-7).reduce((a, b) => a + b.kg, 0) / Math.min(7, userWeights.length)).toFixed(2)
         : "--";
@@ -2166,8 +2267,7 @@
         </div>
       `;
 
-      // Historial Antropométrico y Simetría Muscular
-      document.getElementById("measurementsHistoryBox").innerHTML = state.health.measurements.slice(0, 4).map(m => {
+      document.getElementById("measurementsHistoryBox").innerHTML = (state.health.measurements || []).slice(0, 4).map(m => {
         const diffThigh = (m.thighR - m.thighL).toFixed(1);
         return `
           <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
@@ -2191,7 +2291,7 @@
       const dateStr = new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
       state.health.weights.push({ date: dateStr, user, kg: val });
       document.getElementById("weightValueInput").value = "";
-      saveState();
+      saveState(false);
       renderHealthDashboard();
     }
 
@@ -2202,13 +2302,12 @@
       const thighR = parseFloat(document.getElementById("measThighR").value) || 53.5;
       const thighL = parseFloat(document.getElementById("measThighL").value) || 51.0;
 
-      // Estimación US Navy Mujer (altura 168cm Noelia)
       const height = 168;
       const bf = Math.max(12, Math.min(45, (163.205 * Math.log10(waist + hip - neck) - 97.684 * Math.log10(height) - 78.387))).toFixed(1);
       const dateStr = new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
 
       state.health.measurements.unshift({ date: dateStr, user: "Noelia", waist, hip, neck, thighR, thighL, bf });
-      saveState();
+      saveState(false);
       renderHealthDashboard();
     }
 
@@ -2321,7 +2420,7 @@
 
     function toggleNandoDefMode(checked) {
       state.nando.defMode = checked;
-      saveState();
+      saveState(false);
       renderMacroSummaryBar();
       renderWeekContent();
       renderMrpList();
@@ -2332,7 +2431,7 @@
       state.nando.multProt = parseFloat(document.getElementById("multProtInput").value) || 1.1;
       state.nando.multCarb = parseFloat(document.getElementById("multCarbInput").value) || 1.42;
       state.nando.multFat = parseFloat(document.getElementById("multFatInput").value) || 1.3;
-      saveState();
+      saveState(false);
       renderMacroSummaryBar();
       renderWeekContent();
       renderMrpList();
@@ -2344,7 +2443,7 @@
       const wb = XLSX.utils.book_new();
 
       const kpiData = [
-        ["CLEVERHOME MRP v1.2 - DASHBOARD EJECUTIVO"],
+        ["CLEVERHOME MRP v1.3 CLOUD - DASHBOARD EJECUTIVO"],
         ["Exportado", new Date().toLocaleString("es-ES")],
         [],
         ["PERFIL", "Kcal Diarias", "Proteína (g)", "Hidratos (g)", "Grasas (g)"],
@@ -2384,10 +2483,10 @@
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mrpRows), "4_MRP_y_Costes");
 
       const healthRows = [["Fecha", "Usuario", "Peso (kg)"]];
-      state.health.weights.forEach(w => healthRows.push([w.date, w.user, w.kg]));
+      (state.health.weights || []).forEach(w => healthRows.push([w.date, w.user, w.kg]));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(healthRows), "5_Salud_y_Peso");
 
-      XLSX.writeFile(wb, "CleverHome_MRP_v1_2.xlsx");
+      XLSX.writeFile(wb, "CleverHome_MRP_v1_3_Cloud.xlsx");
     }
 
     function sendAiCommand() {
@@ -2398,7 +2497,7 @@
       chat.innerHTML += `<div class="text-emerald-300 text-right"><b>Tú:</b> ${text}</div>`;
 
       const lower = text.toLowerCase();
-      let reply = "Recibido. Usa el botón 💾 Backup si quieres exportar tus datos actuales.";
+      let reply = "Recibido y sincronizado en la nube.";
       if (lower.includes("compre") || lower.includes("compré") || lower.includes("pollo") || lower.includes("pavo")) {
         state.inventory.forEach(item => {
           const keyword = item.key.split("_")[0];
@@ -2406,9 +2505,9 @@
           const m = lower.match(regex);
           if (m && m[1]) item.stock += parseInt(m[1], 10);
         });
-        saveState();
+        saveState(false);
         renderMrpList();
-        reply = "✅ Stock actualizado automáticamente.";
+        reply = "✅ Stock actualizado automáticamente en todos los dispositivos.";
       }
       chat.innerHTML += `<div class="text-slate-200">${reply}</div>`;
       chat.scrollTop = chat.scrollHeight;
@@ -2419,7 +2518,7 @@
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
       const dlAnchor = document.createElement("a");
       dlAnchor.setAttribute("href", dataStr);
-      dlAnchor.setAttribute("download", "backup_cleverhome_v1_2.json");
+      dlAnchor.setAttribute("download", "backup_cleverhome_v1_3.json");
       document.body.appendChild(dlAnchor);
       dlAnchor.click();
       dlAnchor.remove();
@@ -2431,9 +2530,9 @@
       try {
         state = Object.assign({}, DEFAULT_STATE, JSON.parse(json));
         DISHES_DB = Object.assign({}, INITIAL_DISHES_DB, state.customDishes || {});
-        saveState();
-        initApp();
-        alert("✅ Copia restaurada con éxito.");
+        saveState(false);
+        refreshAllViewsFromState();
+        alert("✅ Copia restaurada y subida a Firebase.");
       } catch (e) {
         alert("Formato JSON no válido.");
       }
@@ -2451,21 +2550,11 @@
     }
 
     function initApp() {
-      document.getElementById("nandoDefToggle").checked = state.nando.defMode;
-      document.getElementById("multProtInput").value = state.nando.multProt;
-      document.getElementById("multCarbInput").value = state.nando.multCarb;
-      document.getElementById("multFatInput").value = state.nando.multFat;
-
       setProfile(state.profile);
       setWeekViewMode(state.weekViewMode || "dia");
-      populateLogDishOptions();
-      renderMealLogsFeed();
-      renderBuilderSelectors();
+      refreshAllViewsFromState();
       renderCatalogSubtab("desayunos");
-      calculatePortionSplit();
-      renderMrpList();
-      renderHealthDashboard();
-      renderDynamicBatchRoadmap("2sesiones");
+      initFirebaseSync();
     }
 
     window.addEventListener("DOMContentLoaded", initApp);
