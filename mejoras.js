@@ -1501,3 +1501,322 @@ window.addEventListener("DOMContentLoaded", function() {
   renderMrpList();
   renderHealthDashboard();
 });
+// ============================================================================
+// PARCHE v1.4.1 — DESCUENTO DE STOCK EN DESAYUNOS/SNACKS + ARTÍCULOS CREADOS
+// ============================================================================
+
+// 1. Mapa completo de claves para todos los Desayunos, Comodines y Meriendas
+const SLOT_KEY_HINTS = {
+  "yogur": "yogur_sl",
+  "cereales": "cereales_0",
+  "proteína": "proteina_iso",
+  "frutos secos": "frutos_secos",
+  "cacahuete": "cacahuete_polvo",
+  "frutos rojos": "fruta_segura",
+  "fruta": "fruta_segura",
+  "fresas": "fruta_segura",
+  "ciruela": "fruta_segura",
+  "tortitas": "tortitas_arroz",
+  "leche de almendras": "leche_almendras",
+  "jamón cocido": "fiambre_pavo",
+  "fiambre de pavo": "fiambre_pavo",
+  "pavo en lonchas": "fiambre_pavo",
+  "pavo / jamón": "fiambre_pavo",
+  "aove": "aove",
+  "pan": "pan_mm",
+  "queso": "queso_untar_sl",
+  "harina de avena": "harina_avena",
+  "claras": "claras",
+  "jamón serrano": "jamon_serrano",
+  "tomate": "tomate_natural",
+  "huevo": "huevos",
+  "aguacate": "aguacate"
+};
+
+function normalizeStr(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+// 2. Buscador inteligente: prioriza los artículos que tú hayas creado o renombrado
+window.findInventoryItemSmart = function(ingKey, ingName) {
+  const normIng = normalizeStr(ingName);
+  const words = normIng.split(/\s+/).filter(w => w.length >= 3 && !["para", "con", "sin", "del", "las", "los"].includes(w));
+
+  // A) Buscar coincidencia directa por nombre en artículos creados por el usuario o con stock
+  let candidates = state.inventory.filter(it => {
+    const normIt = normalizeStr(it.name);
+    if (normIt === normIng) return true;
+    if (normIng.includes("jamon serrano") && normIt.includes("jamon serrano")) return true;
+    if (normIng.includes("tomate") && normIt.includes("tomate")) return true;
+    if (normIng.includes("pan") && normIt.includes("pan") && !normIt.includes("empan")) return true;
+    return words.length > 0 && words.every(w => normIt.includes(w));
+  });
+
+  if (candidates.length > 0) {
+    // Priorizar artículos personalizados (item_...) o el que tenga más stock actual
+    candidates.sort((a, b) => {
+      const aCustom = String(a.key).startsWith("item_") ? 1 : 0;
+      const bCustom = String(b.key).startsWith("item_") ? 1 : 0;
+      if (aCustom !== bCustom) return bCustom - aCustom;
+      return (b.stock || 0) - (a.stock || 0);
+    });
+    return candidates[0];
+  }
+
+  // B) Buscar por clave interna (ej. pan_mm aunque lo hayas renombrado a "Pan integral")
+  let guessedKey = ingKey;
+  if (!guessedKey) {
+    for (const [kWord, mapKey] of Object.entries(SLOT_KEY_HINTS)) {
+      if (normIng.includes(normalizeStr(kWord))) {
+        guessedKey = mapKey;
+        break;
+      }
+    }
+  }
+  if (guessedKey) {
+    const byKey = state.inventory.find(x => x.key === guessedKey);
+    if (byKey) return byKey;
+  }
+
+  // C) Coincidencia parcial por primera palabra clave
+  if (words.length > 0) {
+    const partial = state.inventory.find(it => normalizeStr(it.name).includes(words[0]));
+    if (partial) return partial;
+  }
+  return null;
+};
+
+// 3. Obtener lista de ingredientes y gramos según usuario para CUALQUIER comida (Desayuno, Almuerzo, Snack, Cena)
+window.getMealIngredientsForLog = function(mealType, dishId, user) {
+  const list = [];
+  if (mealType === "almuerzo" || mealType === "cena") {
+    const dObj = DISHES_DB[dishId];
+    if (!dObj) return list;
+    dObj.items.forEach(it => {
+      const gNoe = it.gNoelia;
+      const gNan = getNandoWeight(gNoe, it.key);
+      const qty = user === "Noelia" ? gNoe : (user === "Nando" ? gNan : gNoe + gNan);
+      const inv = findInventoryItemSmart(it.key, it.name);
+      list.push({
+        ingName: it.name,
+        invKey: inv ? inv.key : it.key,
+        invName: inv ? inv.name : it.name,
+        qty,
+        unit: inv ? inv.unit : it.unit
+      });
+    });
+  } else {
+    const weights = SIMPLE_SLOTS_WEIGHTS[dishId] || [];
+    weights.forEach(w => {
+      // Omitir si es "1 ración" genérica sin gramos salvo que sea yogur/huevos/tortitas
+      let baseNoe = w.noe;
+      let baseNan = w.nan;
+      if (w.unit === "ración") {
+        baseNoe = 180;
+        baseNan = 200;
+      }
+      const qty = user === "Noelia" ? baseNoe : (user === "Nando" ? baseNan : Number((baseNoe + baseNan).toFixed(1)));
+      const inv = findInventoryItemSmart(null, w.name);
+      list.push({
+        ingName: w.name,
+        invKey: inv ? inv.key : null,
+        invName: inv ? inv.name : w.name,
+        qty,
+        unit: inv ? inv.unit : (w.unit === "ración" ? "g" : w.unit)
+      });
+    });
+  }
+  return list;
+};
+
+// 4. Caja en "Registro" para ver y ajustar los gramos exactos antes de descontar de Stock
+window.renderLogIngredientsPreview = function() {
+  const user = document.getElementById("logUser")?.value || "Conjunta";
+  const mealType = document.getElementById("logMealType")?.value || "almuerzo";
+  const dishId = document.getElementById("logDishSelect")?.value;
+  if (!dishId) return;
+
+  let box = document.getElementById("logIngredientsAdjustBox");
+  const dishSel = document.getElementById("logDishSelect");
+  if (!box && dishSel) {
+    box = document.createElement("div");
+    box.id = "logIngredientsAdjustBox";
+    box.className = "bg-slate-50 rounded-2xl p-2.5 border border-slate-200 space-y-1.5";
+    dishSel.parentElement.after(box);
+  }
+  if (!box) return;
+
+  const ings = getMealIngredientsForLog(mealType, dishId, user);
+  if (ings.length === 0) {
+    box.innerHTML = "";
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="flex items-center justify-between">
+      <span class="text-[10px] font-bold uppercase text-slate-500">⚖️ Gramos a descontar de Stock (Editables si usaste otra cantidad):</span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+      ${ings.map((ing, i) => `
+        <div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs">
+          <div class="truncate pr-2">
+            <span class="font-semibold text-slate-800 block truncate">${ing.invName}</span>
+            <span class="text-[9px] ${ing.invKey ? 'text-emerald-600' : 'text-amber-600'}">${ing.invKey ? '✓ Vinculado a Stock' : '⚠️ No está en Stock'}</span>
+          </div>
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <input type="number" step="1" data-invkey="${ing.invKey || ''}" data-ingname="${ing.ingName}" value="${ing.qty}" class="log-ing-qty-input w-14 text-right font-bold text-emerald-700 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5 text-xs focus:outline-none" />
+            <span class="text-[10px] text-slate-500">${ing.unit}</span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+// Conectar cambios de selector en Registro para actualizar la vista previa de gramos
+const _origPopulateLog = window.populateLogDishOptions;
+window.populateLogDishOptions = function() {
+  _origPopulateLog();
+  renderLogIngredientsPreview();
+};
+
+document.addEventListener("change", function(e) {
+  if (e.target && (e.target.id === "logUser" || e.target.id === "logDishSelect")) {
+    renderLogIngredientsPreview();
+  }
+});
+
+// 5. Nuevo saveMealLog que descuenta Desayunos, Comodines, Meriendas, Almuerzos y Cenas usando los gramos reales
+window.saveMealLog = function() {
+  ensureV14StateStructure();
+  const user = document.getElementById("logUser").value;
+  const mealType = document.getElementById("logMealType").value;
+  const dishId = document.getElementById("logDishSelect").value;
+  const notes = document.getElementById("logDigestiveNotes").value.trim();
+
+  let baseKcal = 511, baseP = 48, baseHC = 44, baseG = 13, title = "";
+  if (mealType === "desayuno") {
+    baseKcal = 300; baseP = 20; baseHC = 30; baseG = 10;
+    title = (DESAYUNOS_PDF.find(x => x.id === dishId) || {}).name || "Desayuno";
+  } else if (mealType === "snackTarde") {
+    baseKcal = 200; baseP = 20; baseHC = 20; baseG = 4;
+    title = (SNACK_TARDE_PDF.find(x => x.id === dishId) || {}).name || "Merienda";
+  } else if (mealType === "snackComodin") {
+    baseKcal = 80; baseP = 1; baseHC = 20; baseG = 0;
+    title = (SNACK_COMODIN_PDF.find(x => x.id === dishId) || {}).name || "Comodín";
+  } else {
+    const dObj = DISHES_DB[dishId];
+    title = dObj ? dObj.title : "Plato Principal";
+  }
+
+  // Leer los gramos de las cajitas editables (o calcular por defecto) y descontar del inventario
+  const qtyInputs = document.querySelectorAll(".log-ing-qty-input");
+  if (qtyInputs.length > 0) {
+    qtyInputs.forEach(inp => {
+      const invKey = inp.getAttribute("data-invkey");
+      const ingName = inp.getAttribute("data-ingname");
+      const consumed = parseFloat(inp.value) || 0;
+      if (consumed > 0) {
+        let invItem = invKey ? state.inventory.find(x => x.key === invKey) : findInventoryItemSmart(null, ingName);
+        if (invItem) {
+          invItem.stock = Math.max(0, Number((invItem.stock - consumed).toFixed(1)));
+          recordStockMovement(invItem.key, -consumed, `🍽️ Consumo (${user}): ${title.substring(0, 26)}...`);
+        }
+      }
+    });
+  }
+
+  const ratio = currentEatenPct / 100;
+  const entry = {
+    id: Date.now(),
+    dayKey: new Date().toLocaleDateString("es-ES"),
+    date: new Date().toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+    user,
+    mealType,
+    title,
+    pct: currentEatenPct,
+    kcal: Math.round(baseKcal * ratio),
+    p: Math.round(baseP * ratio),
+    hc: Math.round(baseHC * ratio),
+    g: Math.round(baseG * ratio),
+    notes: notes || "Digestión bien tolerada.",
+    photo: currentPhotoDataUrl || ""
+  };
+
+  state.logs.unshift(entry);
+  saveState(false);
+
+  currentPhotoDataUrl = null;
+  document.getElementById("photoPreviewContainer").classList.add("hidden");
+  document.getElementById("photoLabelText").textContent = "Hacer Foto / Galería";
+  document.getElementById("logDigestiveNotes").value = "";
+  setEatenPct(100);
+
+  renderMealLogsFeed();
+  renderMrpList();
+  renderHealthDashboard();
+  renderRegistroAdherencePanel();
+  renderLogIngredientsPreview();
+  alert("✅ Comida registrada y gramos descontados del Stock en Casa.");
+};
+
+// 6. Sumar también los ingredientes reales de Desayunos y Meriendas en las Necesidades de Compra
+window.calculateRequiredMap = function() {
+  const req = {};
+  state.inventory.forEach(it => { req[it.key] = 0; });
+
+  const activeWeek = state.weeks[state.weekHorizon];
+  activeWeek.forEach(dayObj => {
+    // Almuerzo y Cena
+    ["l", "c"].forEach(slot => {
+      const dish = DISHES_DB[dayObj[slot]];
+      if (dish) {
+        dish.items.forEach(it => {
+          const inv = findInventoryItemSmart(it.key, it.name);
+          const targetKey = inv ? inv.key : it.key;
+          const totalW = it.gNoelia + getNandoWeight(it.gNoelia, it.key);
+          if (req[targetKey] !== undefined) req[targetKey] += totalW;
+        });
+      }
+    });
+    // Desayuno, Comodín y Merienda reales configurados ese día
+    ["d", "sc", "st"].forEach(slot => {
+      const weights = SIMPLE_SLOTS_WEIGHTS[dayObj[slot]] || [];
+      weights.forEach(w => {
+        const inv = findInventoryItemSmart(null, w.name);
+        if (inv && req[inv.key] !== undefined) {
+          const addW = w.unit === "ración" ? 350 : (w.noe + w.nan);
+          req[inv.key] += addW;
+        }
+      });
+    });
+  });
+
+  if (shoppingHorizon === "mensual") {
+    Object.keys(req).forEach(k => { req[k] = req[k] * 4; });
+  }
+  return req;
+};
+
+// 7. Corregir título "EJECUCIÓN EN TUS EQUIPOS" al abrir el Histórico de Stock
+const _origOpenStockHist = window.openStockHistoryModal;
+window.openStockHistoryModal = function(itemKey) {
+  _origOpenStockHist(itemKey);
+  const stepsHeader = document.getElementById("modalStepsBox")?.previousElementSibling;
+  if (stepsHeader) {
+    stepsHeader.textContent = "📊 HISTÓRICO DE MOVIMIENTOS (ENTRADAS Y SALIDAS)";
+  }
+};
+
+const _origOpenRecipeModal = window.openRecipeModal;
+window.openRecipeModal = function(dayIdx, slotKey, dishId) {
+  const stepsHeader = document.getElementById("modalStepsBox")?.previousElementSibling;
+  if (stepsHeader) {
+    stepsHeader.textContent = "⚙️ EJECUCIÓN EN TUS EQUIPOS";
+  }
+  _origOpenRecipeModal(dayIdx, slotKey, dishId);
+};
+
+window.addEventListener("DOMContentLoaded", function() {
+  setTimeout(renderLogIngredientsPreview, 300);
+});
