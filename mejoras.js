@@ -2236,3 +2236,296 @@ window.printWeeklyFridgePDF = function() {
 window.addEventListener("DOMContentLoaded", function() {
   setTimeout(renderMealLogsFeed, 200);
 });
+// ============================================================================
+// PARCHE v1.4.3 — AJUSTE EXACTO A 2 HOJAS (VERTICAL) + CATÁLOGO COMPLETO EN 1 HOJA (HORIZONTAL)
+// ============================================================================
+
+window.printWeeklyFridgePDF = function() {
+  const weekArr = state.weeks[state.weekHorizon];
+  const nan = getNandoGoalMacros();
+
+  // Construcción compacta de filas para que Lunes-Jueves (Hoja 1) y Viernes-Domingo (Hoja 2) encajen siempre en 1 cara cada una
+  function buildMainTableRows(daysSubset) {
+    return daysSubset.map(dObj => {
+      const lDish = DISHES_DB[dObj.l] || DISHES_DB["m1_l"];
+      const cDish = DISHES_DB[dObj.c] || DISHES_DB["m1_d"];
+
+      const lIngs = lDish.items.map(it => {
+        const gNoe = it.gNoelia;
+        const gNan = getNandoWeight(gNoe, it.key);
+        return `<li><b>${it.name}:</b> Noe ${gNoe}${it.unit} | Nan ${gNan}${it.unit} <span class="tot-l">(Tot: ${gNoe + gNan}${it.unit})</span></li>`;
+      }).join("");
+
+      const cIngs = cDish.items.map(it => {
+        const gNoe = it.gNoelia;
+        const gNan = getNandoWeight(gNoe, it.key);
+        return `<li><b>${it.name}:</b> Noe ${gNoe}${it.unit} | Nan ${gNan}${it.unit} <span class="tot-c">(Tot: ${gNoe + gNan}${it.unit})</span></li>`;
+      }).join("");
+
+      const lSteps = (lDish.appliances || []).map(s => `<div class="step-line">${s}</div>`).join("");
+      const cSteps = (cDish.appliances || []).map(s => `<div class="step-line">${s}</div>`).join("");
+
+      return `
+        <tr>
+          <td class="day-col">${dObj.day}</td>
+          <td class="meal-col">
+            <div class="dish-title lunch-title">🍽️ ${lDish.title}</div>
+            <ul class="ing-list">${lIngs}</ul>
+          </td>
+          <td class="meal-col">
+            <div class="dish-title dinner-title">🌙 ${cDish.title}</div>
+            <ul class="ing-list">${cIngs}</ul>
+          </td>
+          <td class="steps-col">
+            <div class="step-block"><b style="color:#065f46;">☀️ Alm:</b> ${lSteps}</div>
+            <div class="step-block step-sep"><b style="color:#3730a3;">🌙 Cena:</b> ${cSteps}</div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // Hoja Horizontal: CATÁLOGO COMPLETO DE POSIBILIDADES (Independiente del día de la semana)
+  const allBreakfastsHtml = DESAYUNOS_PDF.map(dItem => {
+    const wList = (SIMPLE_SLOTS_WEIGHTS[dItem.id] || []).map(w =>
+      `<b>${w.name}:</b> Noe ${w.noe}${w.unit} | Nan ${w.nan}${w.unit} <i>(Tot: ${Number((w.noe + w.nan).toFixed(1))}${w.unit})</i>`
+    ).join(" · ");
+    return `
+      <div class="cat-card">
+        <div class="cat-title">☕ ${dItem.name}</div>
+        <div class="cat-ings">${wList}</div>
+      </div>
+    `;
+  }).join("");
+
+  const allMeriendasHtml = SNACK_TARDE_PDF.map(stItem => {
+    const wList = (SIMPLE_SLOTS_WEIGHTS[stItem.id] || []).map(w =>
+      `<li><b>${w.name}:</b> Noe ${w.noe}${w.unit} | Nan ${w.nan}${w.unit} <i>(Tot: ${Number((w.noe + w.nan).toFixed(1))}${w.unit})</i></li>`
+    ).join("");
+    return `
+      <div class="cat-card-lg">
+        <div class="cat-title">🥪 ${stItem.name}</div>
+        <ul class="cat-list">${wList}</ul>
+      </div>
+    `;
+  }).join("");
+
+  const allComodinesHtml = SNACK_COMODIN_PDF.map(scItem => {
+    const wList = (SIMPLE_SLOTS_WEIGHTS[scItem.id] || []).map(w =>
+      `<li><b>${w.name}:</b> Noe ${w.noe}${w.unit} | Nan ${w.nan}${w.unit}</li>`
+    ).join("");
+    return `
+      <div class="cat-card-lg">
+        <div class="cat-title">🍓 ${scItem.name}</div>
+        <ul class="cat-list">${wList}</ul>
+      </div>
+    `;
+  }).join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Menú Semanal A4 — Noelia & Nando</title>
+      <style id="pageOrientationStyle">
+        @page { size: A4 portrait; margin: 6mm 7mm; }
+      </style>
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; font-size: 9.4px; line-height: 1.24; }
+        .top-bar { background: #0f172a; color: white; padding: 8px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: 0; z-index: 50; }
+        .top-bar button { cursor: pointer; border: none; border-radius: 7px; padding: 6px 11px; font-weight: bold; font-size: 11.5px; }
+        .btn-active { background: #10b981; color: white; }
+        .btn-inactive { background: #334155; color: #e2e8f0; }
+        .btn-print { background: #f59e0b; color: #0f172a; }
+        .sheet-container { padding: 6px 10px; max-width: 1080px; margin: 0 auto; }
+        .header-row { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 3px; margin-bottom: 5px; }
+        h1 { font-size: 13px; margin: 0; color: #065f46; text-transform: uppercase; letter-spacing: 0.2px; }
+        span.sub { font-size: 9.2px; color: #475569; font-weight: 600; }
+
+        /* Tabla Vertical Compacta (2 Hojas Exactas) */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 4px; table-layout: fixed; }
+        th, td { border: 1px solid #94a3b8; padding: 4.5px 6px; vertical-align: top; text-align: left; word-wrap: break-word; }
+        th { background: #0f172a; color: white; font-size: 9.8px; text-transform: uppercase; padding: 4px 6px; }
+        .day-col { width: 8%; font-weight: 800; font-size: 10.5px; background: #f8fafc; text-align: center; vertical-align: middle; }
+        .meal-col { width: 29.5%; }
+        .steps-col { width: 33%; font-size: 9px; background: #fcfcfd; line-height: 1.22; }
+        .dish-title { font-weight: 800; font-size: 10px; margin-bottom: 3px; line-height: 1.18; }
+        .lunch-title { color: #065f46; }
+        .dinner-title { color: #3730a3; }
+        .ing-list { margin: 0; padding-left: 12px; font-size: 9.1px; }
+        .ing-list li { margin-bottom: 1.5px; }
+        .tot-l { color: #047857; font-weight: 700; }
+        .tot-c { color: #3730a3; font-weight: 700; }
+        .step-line { margin-bottom: 2px; }
+        .step-sep { margin-top: 3.5px; padding-top: 3.5px; border-top: 1px dashed #cbd5e1; }
+        .page-break { page-break-after: always; break-after: page; height: 0; margin: 0; border: none; }
+
+        /* Hoja Horizontal: 3 Columnas Catálogo Completo en 1 Sola Página */
+        .three-col-grid { display: grid; grid-template-columns: 44% 28% 26%; gap: 8px; align-items: start; }
+        .col-box { border: 1px solid #94a3b8; border-radius: 8px; overflow: hidden; background: white; }
+        .col-header { padding: 5px 8px; font-weight: 800; font-size: 10.2px; color: white; text-transform: uppercase; }
+        .col-body { padding: 5px 7px; }
+        .cat-card { border-bottom: 1px solid #e2e8f0; padding-bottom: 3.2px; margin-bottom: 3.2px; }
+        .cat-card:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .cat-card-lg { border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 5px; }
+        .cat-card-lg:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .cat-title { font-weight: 800; font-size: 9.5px; color: #0f172a; margin-bottom: 1px; }
+        .cat-ings { font-size: 8.6px; color: #334155; line-height: 1.22; }
+        .cat-list { margin: 2px 0 0 0; padding-left: 13px; font-size: 8.9px; color: #334155; }
+        .cat-list li { margin-bottom: 1.5px; }
+        .fruit-box { margin-top: 6px; padding: 6px; background: #fdf2f8; border: 1px solid #fbcfe8; border-radius: 6px; font-size: 8.8px; color: #831843; line-height: 1.28; }
+        .tips-box { margin-top: 6px; padding: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 8.8px; color: #166534; line-height: 1.28; }
+
+        @media print {
+          .no-print { display: none !important; }
+          .sheet-container { padding: 0; max-width: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <!-- Barra superior interactiva (no sale al imprimir) -->
+      <div class="top-bar no-print">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button id="btnViewVert" class="btn-active" onclick="switchPdfPart('vertical')">
+            📄 Menú Almuerzos y Cenas (2 Hojas A4 Vertical)
+          </button>
+          <button id="btnViewHoriz" class="btn-inactive" onclick="switchPdfPart('horizontal')">
+            📆 Catálogo Desayunos, Meriendas y Comodines (1 Hoja A4 Horizontal)
+          </button>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:10px; color:#cbd5e1;">💡 Consejo: Desmarca "Encabezados y pies de página" al imprimir</span>
+          <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+          <button class="btn-inactive" onclick="window.close()">✕ Cerrar</button>
+        </div>
+      </div>
+
+      <!-- PARTE A: MENÚ SEMANAL EN 2 HOJAS VERTICALES EXACTAS -->
+      <div id="pdfPartVertical" class="sheet-container">
+        <!-- HOJA 1: LUNES A JUEVES -->
+        <div class="header-row">
+          <h1>🗓️ MENÚ SEMANAL (HOJA 1/2: LUNES A JUEVES) — ALMUERZOS Y CENAS</h1>
+          <span class="sub">Noelia (1.600 kcal) & Nando (${nan.kcal} kcal) · Pesos en crudo · Semana: ${state.weekHorizon.toUpperCase()}</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th class="day-col">Día</th>
+              <th class="meal-col">🍽️ Almuerzo (511 kcal base)</th>
+              <th class="meal-col">🌙 Cena (511 kcal base)</th>
+              <th class="steps-col">👨‍🍳 Paso a Paso en Equipos</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${buildMainTableRows(weekArr.slice(0, 4))}
+          </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- HOJA 2: VIERNES A DOMINGO -->
+        <div class="header-row">
+          <h1>🗓️ MENÚ SEMANAL (HOJA 2/2: VIERNES A DOMINGO) — ALMUERZOS Y CENAS</h1>
+          <span class="sub">Noelia (1.600 kcal) & Nando (${nan.kcal} kcal) · Pesos en crudo · Semana: ${state.weekHorizon.toUpperCase()}</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th class="day-col">Día</th>
+              <th class="meal-col">🍽️ Almuerzo (511 kcal base)</th>
+              <th class="meal-col">🌙 Cena (511 kcal base)</th>
+              <th class="steps-col">👨‍🍳 Paso a Paso en Equipos</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${buildMainTableRows(weekArr.slice(4, 7))}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PARTE B: CATÁLOGO COMPLETO DE NEVERA EN 1 SOLA HOJA HORIZONTAL (3 COLUMNAS) -->
+      <div id="pdfPartHorizontal" class="sheet-container" style="display:none;">
+        <div class="header-row">
+          <h1>☕ CATÁLOGO DE NEVERA: TODAS LAS OPCIONES DE DESAYUNOS, MERIENDAS Y COMODINES</h1>
+          <span class="sub">Intercambiables libremente cualquier día de la semana · Pesos exactos para Noelia (1.600 kcal) y Nando (${nan.kcal} kcal)</span>
+        </div>
+
+        <div class="three-col-grid">
+          <!-- COLUMNA 1: LAS 12 OPCIONES DE DESAYUNO -->
+          <div class="col-box">
+            <div class="col-header" style="background:#b45309;">1. ☕ CATÁLOGO DE 12 DESAYUNOS (300 KCAL · 20P | 30HC | 10G)</div>
+            <div class="col-body">${allBreakfastsHtml}</div>
+          </div>
+
+          <!-- COLUMNA 2: LAS 5 OPCIONES DE MERIENDA -->
+          <div class="col-box">
+            <div class="col-header" style="background:#6d28d9;">2. 🥪 CATÁLOGO DE 5 MERIENDAS (200 KCAL · 20P | 20HC | 4G)</div>
+            <div class="col-body">
+              ${allMeriendasHtml}
+              <div class="tips-box">
+                <b>💡 Reglas rápidas de intercambio:</b><br>
+                • Puedes elegir cualquier desayuno o merienda del listado cada día sin alterar tus macros diarios.<br>
+                • <b>Pan permitido:</b> Pan de masa madre, pan finito o pan integral.<br>
+                • <b>Lácteos Noelia:</b> Siempre 0% materia grasa y <b>sin lactosa</b>.<br>
+                • <b>Sirope proteico:</b> Mezclar los gramos de Proteína ISO con la leche de almendras Zero hasta textura crema.
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMNA 3: LAS 3 OPCIONES DE COMODÍN + TABLA DE FRUTAS -->
+          <div class="col-box">
+            <div class="col-header" style="background:#be185d;">3. 🍓 CATÁLOGO DE COMODINES (80 KCAL · 20HC)</div>
+            <div class="col-body">
+              ${allComodinesHtml}
+              <div class="fruit-box">
+                <b>🍓 TABLA OFICIAL DE 1 RACIÓN DE FRUTA (INTERCAMBIABLE):</b><br>
+                <b>✅ Bajas en Fructosa (Priorizar Noelia):</b><br>
+                • <b>Fresas:</b> Noe 250g | Nan 280g<br>
+                • <b>Kiwi:</b> Noe 130g | Nan 150g<br>
+                • <b>Arándanos:</b> Noe 140g | Nan 160g<br>
+                • <b>Frambuesas / Moras:</b> Noe 150g | Nan 170g<br>
+                • <b>Naranja / Mandarina:</b> Noe 170g | Nan 190g<br>
+                • <b>Piña natural:</b> Noe 160g | Nan 180g<br>
+                • <b>Melón / Sandía:</b> Noe 200g | Nan 230g<br><br>
+                <b>⚠️ Controlar Tolerancia (Fructosa/Sorbitol):</b><br>
+                • <b>Ciruela:</b> 180g · <b>Melocotón/Nectarina:</b> 200g<br>
+                • <b>Manzana / Pera:</b> 150g · <b>Uvas / Caqui:</b> 110g
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        function switchPdfPart(mode) {
+          const styleTag = document.getElementById("pageOrientationStyle");
+          const pVert = document.getElementById("pdfPartVertical");
+          const pHoriz = document.getElementById("pdfPartHorizontal");
+          const bVert = document.getElementById("btnViewVert");
+          const bHoriz = document.getElementById("btnViewHoriz");
+
+          if (mode === "horizontal") {
+            styleTag.innerHTML = "@page { size: A4 landscape; margin: 5mm 6mm; }";
+            pVert.style.display = "none";
+            pHoriz.style.display = "block";
+            bVert.className = "btn-inactive";
+            bHoriz.className = "btn-active";
+          } else {
+            styleTag.innerHTML = "@page { size: A4 portrait; margin: 6mm 7mm; }";
+            pVert.style.display = "block";
+            pHoriz.style.display = "none";
+            bVert.className = "btn-active";
+            bHoriz.className = "btn-inactive";
+          }
+        }
+      <\/script>
+    </body>
+    </html>
+  `;
+
+  const w = window.open("", "_blank");
+  w.document.write(html);
+  w.document.close();
+};
