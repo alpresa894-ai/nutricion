@@ -1820,3 +1820,419 @@ window.openRecipeModal = function(dayIdx, slotKey, dishId) {
 window.addEventListener("DOMContentLoaded", function() {
   setTimeout(renderLogIngredientsPreview, 300);
 });
+// ============================================================================
+// PARCHE v1.4.2 — EDICIÓN/BORRADO DE REGISTROS + NUEVO PDF A4 (VERTICAL + HORIZONTAL)
+// ============================================================================
+
+// 1. INYECTAR MODAL DE EDICIÓN DE REGISTROS EN EL DOM
+function ensureEditLogModal() {
+  if (document.getElementById("editLogModal")) return;
+  const modal = document.createElement("div");
+  modal.id = "editLogModal";
+  modal.className = "fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print";
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-md rounded-3xl p-5 space-y-3 shadow-2xl border border-slate-200">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <h3 class="text-sm font-bold text-slate-900">✏️ Editar Registro de Comida</h3>
+        <button onclick="closeEditLogModal()" class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 font-bold">✕</button>
+      </div>
+      <input type="hidden" id="editLogIdx" value="" />
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Comensal</label>
+          <select id="editLogUser" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-semibold">
+            <option value="Conjunta">👩‍❤️‍👨 Ambos (Conjunta)</option>
+            <option value="Noelia">👩 Noelia</option>
+            <option value="Nando">👨 Nando</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Fecha y Hora</label>
+          <input type="text" id="editLogDate" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-semibold" />
+        </div>
+      </div>
+      <div class="text-xs">
+        <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Plato / Opción Registrada</label>
+        <input type="text" id="editLogTitle" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-slate-900" />
+      </div>
+      <div class="grid grid-cols-5 gap-1.5 text-xs">
+        <div>
+          <label class="block text-[9px] font-bold text-slate-500">% Comido</label>
+          <input type="number" id="editLogPct" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-1.5 font-bold text-center" />
+        </div>
+        <div>
+          <label class="block text-[9px] font-bold text-slate-500">Kcal</label>
+          <input type="number" id="editLogKcal" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-1.5 font-bold text-center text-emerald-700" />
+        </div>
+        <div>
+          <label class="block text-[9px] font-bold text-slate-500">Prot (g)</label>
+          <input type="number" id="editLogP" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-1.5 font-bold text-center" />
+        </div>
+        <div>
+          <label class="block text-[9px] font-bold text-slate-500">Hidr (g)</label>
+          <input type="number" id="editLogHC" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-1.5 font-bold text-center" />
+        </div>
+        <div>
+          <label class="block text-[9px] font-bold text-slate-500">Grasa (g)</label>
+          <input type="number" id="editLogG" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-1.5 font-bold text-center" />
+        </div>
+      </div>
+      <div class="text-xs">
+        <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Notas para el Nutricionista</label>
+        <textarea id="editLogNotes" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2"></textarea>
+      </div>
+      <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        <button onclick="deleteMealLogFromModal()" class="py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs">
+          🗑️ Eliminar
+        </button>
+        <div class="flex gap-2">
+          <button onclick="closeEditLogModal()" class="py-2.5 px-3 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs">
+            Cancelar
+          </button>
+          <button onclick="saveEditedMealLog()" class="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm">
+            💾 Guardar Cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+// 2. RENDERIZAR HISTÓRICO DE REGISTROS CON BOTONES ✏️ Y 🗑️
+window.renderMealLogsFeed = function() {
+  ensureEditLogModal();
+  const feed = document.getElementById("mealLogsFeed");
+  const badge = document.getElementById("logCountBadge");
+  if (badge) badge.textContent = `${(state.logs || []).length} registros`;
+  if (!feed) return;
+
+  if (!state.logs || state.logs.length === 0) {
+    feed.innerHTML = `<div class="text-xs text-slate-400 text-center py-3">Aún no hay comidas registradas.</div>`;
+    return;
+  }
+
+  feed.innerHTML = state.logs.map((l, idx) => `
+    <div class="flex gap-2.5 p-2.5 rounded-2xl bg-slate-50 border border-slate-200 items-start">
+      ${l.photo ? `<img src="${l.photo}" class="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-slate-200" />` : `<div class="w-14 h-14 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-base flex-shrink-0">🍽️</div>`}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-1 text-[10px] text-slate-500">
+          <span class="font-bold text-slate-700 truncate">${l.user} · ${l.date}</span>
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">${l.pct}%</span>
+            <button onclick="openEditLogModal(${idx})" class="px-2 py-0.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold shadow-sm" title="Editar registro">✏️</button>
+            <button onclick="deleteMealLogEntry(${idx})" class="px-2 py-0.5 rounded-lg bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 font-bold shadow-sm" title="Eliminar registro">🗑️</button>
+          </div>
+        </div>
+        <h4 class="text-xs font-bold text-slate-900 truncate mt-0.5">${l.title}</h4>
+        <div class="text-[11px] font-semibold text-emerald-700">${l.kcal} kcal · ${l.p}P | ${l.hc}HC | ${l.g}G</div>
+        <p class="text-[10px] text-slate-500 italic">"\${l.notes}"</p>
+      </div>
+    </div>
+  `.replace("\\${l.notes}", l.notes || "")).join("");
+};
+
+window.openEditLogModal = function(idx) {
+  ensureEditLogModal();
+  const l = state.logs[idx];
+  if (!l) return;
+  document.getElementById("editLogIdx").value = String(idx);
+  document.getElementById("editLogUser").value = l.user || "Conjunta";
+  document.getElementById("editLogDate").value = l.date || "";
+  document.getElementById("editLogTitle").value = l.title || "";
+  document.getElementById("editLogPct").value = l.pct !== undefined ? l.pct : 100;
+  document.getElementById("editLogKcal").value = l.kcal || 0;
+  document.getElementById("editLogP").value = l.p || 0;
+  document.getElementById("editLogHC").value = l.hc || 0;
+  document.getElementById("editLogG").value = l.g || 0;
+  document.getElementById("editLogNotes").value = l.notes || "";
+  document.getElementById("editLogModal").classList.remove("hidden");
+};
+
+window.closeEditLogModal = function() {
+  const m = document.getElementById("editLogModal");
+  if (m) m.classList.add("hidden");
+};
+
+window.saveEditedMealLog = function() {
+  const idx = parseInt(document.getElementById("editLogIdx").value, 10);
+  if (isNaN(idx) || !state.logs[idx]) return;
+
+  state.logs[idx].user = document.getElementById("editLogUser").value;
+  state.logs[idx].date = document.getElementById("editLogDate").value.trim();
+  state.logs[idx].title = document.getElementById("editLogTitle").value.trim();
+  state.logs[idx].pct = parseInt(document.getElementById("editLogPct").value, 10) || 100;
+  state.logs[idx].kcal = parseInt(document.getElementById("editLogKcal").value, 10) || 0;
+  state.logs[idx].p = parseInt(document.getElementById("editLogP").value, 10) || 0;
+  state.logs[idx].hc = parseInt(document.getElementById("editLogHC").value, 10) || 0;
+  state.logs[idx].g = parseInt(document.getElementById("editLogG").value, 10) || 0;
+  state.logs[idx].notes = document.getElementById("editLogNotes").value.trim();
+
+  saveState(false);
+  closeEditLogModal();
+  renderMealLogsFeed();
+  renderHealthDashboard();
+  renderRegistroAdherencePanel();
+};
+
+window.deleteMealLogEntry = function(idx) {
+  const l = state.logs[idx];
+  if (!l) return;
+  if (!confirm(`¿Eliminar el registro "${l.title}" (${l.user} · ${l.date})?`)) return;
+  state.logs.splice(idx, 1);
+  saveState(false);
+  closeEditLogModal();
+  renderMealLogsFeed();
+  renderHealthDashboard();
+  renderRegistroAdherencePanel();
+};
+
+window.deleteMealLogFromModal = function() {
+  const idx = parseInt(document.getElementById("editLogIdx").value, 10);
+  if (!isNaN(idx)) deleteMealLogEntry(idx);
+};
+
+// 3. NUEVO MOTOR PDF SEMANAL: HOJAS 1-2 VERTICAL (ALMUERZOS/CENAS/PASO A PASO) + HOJA 3 HORIZONTAL (3 COLUMNAS)
+window.printWeeklyFridgePDF = function() {
+  const weekArr = state.weeks[state.weekHorizon];
+  const nan = getNandoGoalMacros();
+
+  function buildMainTableRows(daysSubset) {
+    return daysSubset.map(dObj => {
+      const lDish = DISHES_DB[dObj.l] || DISHES_DB["m1_l"];
+      const cDish = DISHES_DB[dObj.c] || DISHES_DB["m1_d"];
+
+      const lIngs = lDish.items.map(it => {
+        const gNoe = it.gNoelia;
+        const gNan = getNandoWeight(gNoe, it.key);
+        return `<li><b>${it.name}:</b> Noe ${gNoe}${it.unit} | Nan ${gNan}${it.unit} <span style="color:#047857; font-weight:bold;">(Total: ${gNoe + gNan}${it.unit})</span></li>`;
+      }).join("");
+
+      const cIngs = cDish.items.map(it => {
+        const gNoe = it.gNoelia;
+        const gNan = getNandoWeight(gNoe, it.key);
+        return `<li><b>${it.name}:</b> Noe ${gNoe}${it.unit} | Nan ${gNan}${it.unit} <span style="color:#3730a3; font-weight:bold;">(Total: ${gNoe + gNan}${it.unit})</span></li>`;
+      }).join("");
+
+      const lSteps = (lDish.appliances || []).map(s => `<div style="margin-bottom:4px;">${s}</div>`).join("");
+      const cSteps = (cDish.appliances || []).map(s => `<div style="margin-bottom:4px;">${s}</div>`).join("");
+
+      return `
+        <tr>
+          <td class="day-col">${dObj.day}</td>
+          <td class="meal-col">
+            <div class="dish-title lunch-title">🍽️ ${lDish.title}</div>
+            <ul class="ing-list">${lIngs}</ul>
+          </td>
+          <td class="meal-col">
+            <div class="dish-title dinner-title">🌙 ${cDish.title}</div>
+            <ul class="ing-list">${cIngs}</ul>
+          </td>
+          <td class="steps-col">
+            <div class="step-block"><b style="color:#065f46;">☀️ Almuerzo:</b> ${lSteps}</div>
+            <div class="step-block" style="margin-top:6px; padding-top:5px; border-top:1px dashed #cbd5e1;"><b style="color:#3730a3;">🌙 Cena:</b> ${cSteps}</div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // Filas para la Hoja Horizontal en 3 Columnas (Desayunos, Meriendas, Comodines)
+  const breakfastColHtml = weekArr.map(dObj => {
+    const dItem = DESAYUNOS_PDF.find(x => x.id === dObj.d) || DESAYUNOS_PDF[0];
+    const wList = (SIMPLE_SLOTS_WEIGHTS[dItem.id] || []).map(w =>
+      `<li><b>${w.name}:</b> Noe ${w.noe}${w.unit} | Nan ${w.nan}${w.unit} (Tot: ${Number((w.noe + w.nan).toFixed(1))}${w.unit})</li>`
+    ).join("");
+    return `
+      <div class="slot-card">
+        <div class="slot-day">${dObj.day} — ${dItem.name}</div>
+        <ul class="ing-list">${wList}</ul>
+      </div>
+    `;
+  }).join("");
+
+  const meriendaColHtml = weekArr.map(dObj => {
+    const stItem = SNACK_TARDE_PDF.find(x => x.id === dObj.st) || SNACK_TARDE_PDF[0];
+    const wList = (SIMPLE_SLOTS_WEIGHTS[stItem.id] || []).map(w =>
+      `<li><b>${w.name}:</b> Noe ${w.noe}${w.unit} | Nan ${w.nan}${w.unit} (Tot: ${Number((w.noe + w.nan).toFixed(1))}${w.unit})</li>`
+    ).join("");
+    return `
+      <div class="slot-card">
+        <div class="slot-day">${dObj.day} — ${stItem.name}</div>
+        <ul class="ing-list">${wList}</ul>
+      </div>
+    `;
+  }).join("");
+
+  const comodinColHtml = weekArr.map(dObj => {
+    const scItem = SNACK_COMODIN_PDF.find(x => x.id === dObj.sc) || SNACK_COMODIN_PDF[0];
+    const wList = (SIMPLE_SLOTS_WEIGHTS[scItem.id] || []).map(w =>
+      `<li><b>${w.name}:</b> Noe ${w.noe}${w.unit} | Nan ${w.nan}${w.unit}</li>`
+    ).join("");
+    return `
+      <div class="slot-card">
+        <div class="slot-day">${dObj.day} — ${scItem.name}</div>
+        <ul class="ing-list">${wList}</ul>
+      </div>
+    `;
+  }).join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Menú Semanal A4 — Noelia & Nando</title>
+      <style id="pageOrientationStyle">
+        @page { size: A4 portrait; margin: 10mm; }
+      </style>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; font-size: 11px; line-height: 1.35; }
+        .top-bar { background: #0f172a; color: white; padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: 0; z-index: 50; }
+        .top-bar button { cursor: pointer; border: none; border-radius: 8px; padding: 7px 12px; font-weight: bold; font-size: 12px; }
+        .btn-active { background: #10b981; color: white; }
+        .btn-inactive { background: #334155; color: #e2e8f0; }
+        .btn-print { background: #f59e0b; color: #0f172a; }
+        .sheet-container { padding: 12px 16px; max-width: 1050px; margin: 0 auto; }
+        h1 { font-size: 16px; margin: 0 0 3px 0; color: #065f46; }
+        p.sub { font-size: 11px; margin: 0 0 10px 0; color: #475569; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+        th, td { border: 1px solid #94a3b8; padding: 8px; vertical-align: top; text-align: left; }
+        th { background: #0f172a; color: white; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .day-col { width: 9%; font-weight: 800; font-size: 12px; background: #f8fafc; text-align: center; }
+        .meal-col { width: 29%; }
+        .steps-col { width: 33%; font-size: 10.5px; background: #fcfcfd; }
+        .dish-title { font-weight: 800; font-size: 12px; margin-bottom: 5px; }
+        .lunch-title { color: #065f46; }
+        .dinner-title { color: #3730a3; }
+        .ing-list { margin: 0; padding-left: 15px; font-size: 10.5px; }
+        .ing-list li { margin-bottom: 3px; }
+        .page-break { page-break-after: always; break-after: page; }
+        /* Tres columnas para la hoja horizontal */
+        .three-col-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .col-box { border: 1px solid #94a3b8; border-radius: 10px; overflow: hidden; }
+        .col-header { padding: 8px 10px; font-weight: 800; font-size: 12px; color: white; }
+        .col-body { padding: 8px; space-y: 6px; }
+        .slot-card { border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 6px; }
+        .slot-card:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .slot-day { font-weight: 800; font-size: 11px; color: #0f172a; margin-bottom: 3px; }
+        @media print {
+          .no-print { display: none !important; }
+          .sheet-container { padding: 0; max-width: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <!-- Barra de control no imprimible -->
+      <div class="top-bar no-print">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button id="btnViewVert" class="btn-active" onclick="switchPdfPart('vertical')">
+            📄 Hojas 1 y 2 (Vertical): Almuerzos, Cenas y Paso a Paso
+          </button>
+          <button id="btnViewHoriz" class="btn-inactive" onclick="switchPdfPart('horizontal')">
+            📆 Hoja 3 (Horizontal 3 Columnas): Desayunos, Meriendas y Comodines
+          </button>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar este PDF</button>
+          <button class="btn-inactive" onclick="window.close()">✕ Cerrar</button>
+        </div>
+      </div>
+
+      <!-- PARTE A: 2 HOJAS EN VERTICAL (LUNES A JUEVES / VIERNES A DOMINGO) -->
+      <div id="pdfPartVertical" class="sheet-container">
+        <h1>🗓️ HOJA 1 (VERTICAL): ALMUERZOS, CENAS Y PASO A PASO (LUNES A JUEVES)</h1>
+        <p class="sub">Noelia (1.600 kcal) & Nando (${nan.kcal} kcal) · Cantidades en crudo exactas (g, ml, uds) · Semana: ${state.weekHorizon.toUpperCase()}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Día</th>
+              <th>🍽️ Almuerzo (511 kcal)</th>
+              <th>🌙 Cena (511 kcal)</th>
+              <th>👨‍🍳 Paso a Paso Resumido</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${buildMainTableRows(weekArr.slice(0, 4))}
+          </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <h1>🗓️ HOJA 2 (VERTICAL): ALMUERZOS, CENAS Y PASO A PASO (VIERNES A DOMINGO)</h1>
+        <p class="sub">Noelia (1.600 kcal) & Nando (${nan.kcal} kcal) · Cantidades en crudo exactas (g, ml, uds) · Semana: ${state.weekHorizon.toUpperCase()}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Día</th>
+              <th>🍽️ Almuerzo (511 kcal)</th>
+              <th>🌙 Cena (511 kcal)</th>
+              <th>👨‍🍳 Paso a Paso Resumido</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${buildMainTableRows(weekArr.slice(4, 7))}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PARTE B: 1 HOJA EN HORIZONTAL EN 3 COLUMNAS (DESAYUNOS, MERIENDAS Y COMODINES) -->
+      <div id="pdfPartHorizontal" class="sheet-container" style="display:none;">
+        <h1>☕ HOJA DE DESAYUNOS, MERIENDAS Y COMODINES (FORMATO HORIZONTAL · 3 COLUMNAS)</h1>
+        <p class="sub">Medidas exactas (g, ml, uds) desglosadas para Noelia y Nando · Semana: ${state.weekHorizon.toUpperCase()}</p>
+        <div class="three-col-grid">
+          <div class="col-box">
+            <div class="col-header" style="background:#b45309;">1. ☕ DESAYUNOS (300 KCAL · 20P | 30HC | 10G)</div>
+            <div class="col-body">${breakfastColHtml}</div>
+          </div>
+          <div class="col-box">
+            <div class="col-header" style="background:#6d28d9;">2. 🥪 MERIENDAS (200 KCAL · 20P | 20HC | 4G)</div>
+            <div class="col-body">${meriendaColHtml}</div>
+          </div>
+          <div class="col-box">
+            <div class="col-header" style="background:#be185d;">3. 🍓 COMODINES (80 KCAL · 20HC)</div>
+            <div class="col-body">
+              ${comodinColHtml}
+              <div style="margin-top:8px; padding:6px; background:#fdf2f8; border-radius:6px; font-size:10px; color:#831843;">
+                <b>🍓 Equivalencias 1 ración de Fruta:</b> 250g Fresas · 130g Kiwi · 140g Arándanos · 150g Frambuesas · 170g Naranja · 160g Piña.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        function switchPdfPart(mode) {
+          const styleTag = document.getElementById("pageOrientationStyle");
+          const pVert = document.getElementById("pdfPartVertical");
+          const pHoriz = document.getElementById("pdfPartHorizontal");
+          const bVert = document.getElementById("btnViewVert");
+          const bHoriz = document.getElementById("btnViewHoriz");
+
+          if (mode === "horizontal") {
+            styleTag.innerHTML = "@page { size: A4 landscape; margin: 8mm; }";
+            pVert.style.display = "none";
+            pHoriz.style.display = "block";
+            bVert.className = "btn-inactive";
+            bHoriz.className = "btn-active";
+          } else {
+            styleTag.innerHTML = "@page { size: A4 portrait; margin: 10mm; }";
+            pVert.style.display = "block";
+            pHoriz.style.display = "none";
+            bVert.className = "btn-active";
+            bHoriz.className = "btn-inactive";
+          }
+        }
+      <\/script>
+    </body>
+    </html>
+  `;
+
+  const w = window.open("", "_blank");
+  w.document.write(html);
+  w.document.close();
+};
+
+window.addEventListener("DOMContentLoaded", function() {
+  setTimeout(renderMealLogsFeed, 200);
+});
